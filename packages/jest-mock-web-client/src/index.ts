@@ -48,52 +48,43 @@ function deepCopyWithMocks<T>(original: T): ObjectWithMocks<T> {
 }
 
 /**
- * A constructor function that creates mock WebClient objects.
- *
- * This is a bit complicated! We need to construct a class (MockWebClient) with
- * a dynamic set of properties that depend on whatever version of Slack's
- * `WebClient` is in the current environment, but you can't use type mappings
- * directly on a class in TypeScript. Instead, we declare this function as a
- * constructor that returns objects of the appropriate mapped type (using
- * `ObjectWithMocks`), and then declare a class that inherits it. The class
- * winds up with the dynamic set of properties we want.
- */
-const MockWebClientConstructor = (function mockWebClientConstructor(
-  this: ObjectWithMocks<Slack.WebClient>,
-) {
-  const exampleClientInstance = new WebClient('MOCK_TOKEN');
-  const instance = deepCopyWithMocks<Slack.WebClient>(exampleClientInstance);
-
-  // Default for bolt apps
-  // https://github.com/slackapi/bolt-js/blob/1655999346077e9521722a667414758da856ede2/src/App.ts#L579
-  instance.auth.test.mockResolvedValue({
-    ok: true,
-    user_id: 'BOT_USER_ID',
-    bot_id: 'BOT_ID',
-  });
-
-  Object.assign(this, instance);
-} as unknown) as new (
-  token?: string,
-  options?: Slack.WebClientOptions,
-) => ObjectWithMocks<Slack.WebClient>;
-
-/**
- * This class mocks the `WebClient` class from `@slck/web-api` It constructs its
- * properties dynamically based on the type of Slack `WebClient` available in
- * its environment, and should result in something that matches the version you
- * have installed.
+ * `MockWebClient` has same interface as Slack's `WebClient`, but all methods
+ * have been replaced with Jest mock functions.
  *
  * See Slack's WebClient source for more on it:
  * https://github.com/slackapi/node-slack-sdk/blob/main/packages/web-api/src/WebClient.ts
  *
- * Disabling prefer-default-export as jest doesn't like modules, but typescript does
+ * @example
+ * mockInstance.chat.postMessage.mockResolvedValue({
+ *   ok: true,
+ *   message: {
+ *     text: 'Hello World',
+ *   },
+ * });
  */
-export class MockWebClient extends MockWebClientConstructor {}
+export type MockWebClient = ObjectWithMocks<Slack.WebClient>;
 
-export const MockedWebClient: jest.MockedClass<typeof MockWebClient> = jest.fn(
-  // @ts-expect-error: Typing seems to be wrong, this can take a class
-  MockWebClient,
+type MockConstructor = new (
+  token?: string,
+  options?: Slack.WebClientOptions,
+) => MockWebClient;
+
+export const MockedWebClient: jest.MockedClass<MockConstructor> = jest.fn(
+  function makeMockWebClient(this: MockWebClient) {
+    const exampleClientInstance = new WebClient();
+    const instance = deepCopyWithMocks<Slack.WebClient>(exampleClientInstance);
+
+    // Default for bolt apps
+    // https://github.com/slackapi/bolt-js/blob/1655999346077e9521722a667414758da856ede2/src/App.ts#L579
+    instance.auth.test.mockResolvedValue({
+      ok: true,
+      user_id: 'BOT_USER_ID',
+      bot_id: 'BOT_ID',
+    });
+
+    Object.assign(this, instance);
+    return this;
+  },
 );
 
 const mockWebApi = (jestModule: typeof jest): jest.Mock => {
